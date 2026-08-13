@@ -1,5 +1,8 @@
+using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
+using PreviewDeploy.Server.Auth;
 using PreviewDeploy.Server.Data;
+using PreviewDeploy.Server.Endpoints;
 using PreviewDeploy.Server.Options;
 using PreviewDeploy.Server.Seeding;
 
@@ -19,6 +22,11 @@ builder.Services.AddDbContext<PreviewDeployDbContext>(options =>
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.AddScoped<SeedAppService>();
+builder.Services.AddScoped<AppTokenValidator>();
+builder.Services.AddSingleton(Channel.CreateUnbounded<DeployEventRequest>(new UnboundedChannelOptions
+{
+    SingleReader = true,
+}));
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<PreviewDeployDbContext>(
@@ -35,6 +43,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapHealthChecks("/health");
+app.MapDeployEvents();
 
 app.Run();
 
