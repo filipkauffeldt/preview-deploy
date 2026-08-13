@@ -14,9 +14,12 @@ public sealed class PreviewDeployDbContext(DbContextOptions<PreviewDeployDbConte
         modelBuilder.Entity<App>(entity =>
         {
             entity.ToTable("apps");
+            entity.HasIndex(a => a.Name).IsUnique();
             entity.HasIndex(a => new { a.Owner, a.Repo }).IsUnique();
+            entity.Property(a => a.Name).HasMaxLength(63);
             entity.Property(a => a.Owner).HasMaxLength(200);
             entity.Property(a => a.Repo).HasMaxLength(200);
+            entity.Property(a => a.TokenHash).HasMaxLength(64);
         });
 
         modelBuilder.Entity<DeployEvent>(entity =>
@@ -36,6 +39,7 @@ public sealed class PreviewDeployDbContext(DbContextOptions<PreviewDeployDbConte
             entity.Property(d => d.Sha).HasMaxLength(40);
             entity.Property(d => d.Status).HasMaxLength(30);
             entity.Property(d => d.Url).HasMaxLength(500);
+            entity.HasIndex(d => new { d.AppId, d.PrNumber }).IsUnique();
             entity.HasOne(d => d.App)
                 .WithMany(a => a.Deployments)
                 .HasForeignKey(d => d.AppId)
