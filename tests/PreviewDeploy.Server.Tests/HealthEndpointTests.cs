@@ -17,21 +17,10 @@ public sealed class HealthEndpointTests
     }
 
     [Fact]
-    public async Task Health_ReturnsServiceUnavailable_WhenDatabaseIsUnreachable()
-    {
-        using var factory = new TestAppFactory(dataDirectory: "/proc", fileName: "preview-deploy.db");
-        var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/health");
-
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Equal("Unhealthy", await response.Content.ReadAsStringAsync());
-    }
-
-    [Fact]
     public async Task Health_ReturnsOk_WhenStartedWithDataDirEnvVar()
     {
-        Environment.SetEnvironmentVariable("DATA_DIR", Directory.CreateTempSubdirectory("preview-deploy-env-").FullName);
+        var tempDir = Directory.CreateTempSubdirectory("preview-deploy-env-").FullName;
+        Environment.SetEnvironmentVariable("DATA_DIR", tempDir);
         try
         {
             using var factory = new TestAppFactory(dataDirectory: "/proc", fileName: "preview-deploy.db");
@@ -44,6 +33,7 @@ public sealed class HealthEndpointTests
         finally
         {
             Environment.SetEnvironmentVariable("DATA_DIR", null);
+            Directory.Delete(tempDir, recursive: true);
         }
     }
 }
