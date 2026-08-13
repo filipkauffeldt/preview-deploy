@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PreviewDeploy.Server.Data;
+using PreviewDeploy.Server.Options;
+using PreviewDeploy.Server.Seeding;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +17,9 @@ Directory.CreateDirectory(databaseOptions.DataDirectory);
 builder.Services.AddDbContext<PreviewDeployDbContext>(options =>
     options.UseSqlite(databaseOptions.ResolveConnectionString()));
 
+builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
+builder.Services.AddScoped<SeedAppService>();
+
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<PreviewDeployDbContext>(
         "sqlite",
@@ -26,6 +31,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
     db.Database.Migrate();
+    await scope.ServiceProvider.GetRequiredService<SeedAppService>().RunAsync(CancellationToken.None);
 }
 
 app.MapHealthChecks("/health");
