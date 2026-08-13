@@ -33,6 +33,13 @@ builder.Services.AddSingleton(Channel.CreateUnbounded<DeployEventRequest>(new Un
 }));
 builder.Services.AddSingleton<IGitCloner, GitCloner>();
 builder.Services.AddSingleton<IContainerRuntime, DockerContainerRuntime>();
+builder.Services.AddHttpClient<IGitHubCommentClient, GitHubCommentClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("preview-deploy");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+}).AddHttpMessageHandler<GitHubAuthHandler>();
+builder.Services.AddTransient<GitHubAuthHandler>();
 builder.Services.AddHostedService<DeployEventProcessor>();
 
 builder.Services.AddHealthChecks()

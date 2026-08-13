@@ -12,6 +12,7 @@ public sealed class DeployEventProcessor(
     IServiceScopeFactory scopeFactory,
     IContainerRuntime containers,
     IGitCloner cloner,
+    IGitHubCommentClient comments,
     IOptions<GitHubOptions> gitHubOptions,
     IOptions<RoutingOptions> routingOptions,
     IOptions<DockerOptions> dockerOptions,
@@ -68,6 +69,9 @@ public sealed class DeployEventProcessor(
         deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
+        await TryPostCommentAsync(db, app, request.Pr,
+            $"Deploying preview for PR #{request.Pr} (sha {ShortSha(request.Sha)})...");
+
         var cloneDirectory = await cloner.CloneAsync(
             app.Owner,
             app.Repo,
@@ -79,7 +83,7 @@ public sealed class DeployEventProcessor(
 
         try
         {
-            var imageTag = $"{app.Name}:pr{request.Pr}-{request.Sha[..Math.Min(request.Sha.Length, 7)]}";
+            var imageTag = $"{app.Name}:pr{request.Pr}-{ShortSha(request.Sha)}";
             var (_, port) = await containers.DeployAsync(
                 app.Name,
                 request.Pr,
@@ -95,6 +99,9 @@ public sealed class DeployEventProcessor(
             deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 
+            await TryPostCommentAsync(db, app, request.Pr,
+                $"Preview ready at {deployment.Url} (sha {ShortSha(request.Sha)})");
+
             logger.LogInformation(
                 "Preview for app {App} PR {Pr} is running at {Url} (sha {Sha})",
                 app.Name, request.Pr, deployment.Url, request.Sha);
@@ -104,6 +111,9 @@ public sealed class DeployEventProcessor(
             deployment.Status = DeploymentStatus.Failed;
             deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
+
+            await TryPostCommentAsync(db, app, request.Pr,
+                $"Preview deployment failed: {ex.Message}");
 
             logger.LogError(ex, "Deploying app {App} PR {Pr} (sha {Sha}) failed", app.Name, request.Pr, request.Sha);
         }
@@ -126,8 +136,29 @@ public sealed class DeployEventProcessor(
         deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
+        await TryPostCommentAsync(db, app, deployment.PrNumber,
+            $"Preview deployment removed for PR #{deployment.PrNumber}");
+
         logger.LogInformation("Tore down preview for app {App} PR {Pr}", app.Name, deployment.PrNumber);
     }
+
+    private async Task TryPostCommentAsync(
+        PreviewDeployDbContext db,
+        App app,
+        int prNumber,
+        string body)
+    {
+        try
+        {
+            await comments.UpsertAsync(app, prNumber, body, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to post PR comment for app {App} PR {Pr}", app.Name, prNumber);
+        }
+    }
+
+    private static string ShortSha(string sha) => sha[..Math.Min(sha.Length, 7)];
 
     private string BuildPreviewUrl(string appName, int prNumber) =>
         $"https://{DeploymentNames.Subdomain(appName, prNumber)}.{routingOptions.Value.BaseHost}";

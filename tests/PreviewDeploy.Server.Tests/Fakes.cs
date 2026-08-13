@@ -1,3 +1,4 @@
+using PreviewDeploy.Server.Data;
 using PreviewDeploy.Server.Deployments;
 
 namespace PreviewDeploy.Server.Tests;
@@ -52,5 +53,16 @@ public sealed class FakeGitCloner : IGitCloner
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "Dockerfile"), "FROM scratch\n");
         return Task.FromResult(directory);
+    }
+}
+
+public sealed class FakeGitHubCommentClient : IGitHubCommentClient
+{
+    public List<(App App, int Pr, string Body)> Upserts { get; } = [];
+
+    public Task UpsertAsync(App app, int prNumber, string body, CancellationToken cancellationToken)
+    {
+        Upserts.Add((app, prNumber, body));
+        return Task.CompletedTask;
     }
 }

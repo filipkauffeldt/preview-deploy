@@ -17,6 +17,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
 
     private readonly FakeContainerRuntime _containers = new() { Port = 3000 };
     private readonly FakeGitCloner _cloner = new();
+    private readonly FakeGitHubCommentClient _comments = new();
     private TestAppFactory _factory = null!;
 
     public async Task InitializeAsync()
@@ -28,6 +29,8 @@ public sealed class DeployFlowTests : IAsyncLifetime
                 services.AddSingleton<IContainerRuntime>(_containers);
                 services.RemoveAll<IGitCloner>();
                 services.AddSingleton<IGitCloner>(_cloner);
+                services.RemoveAll<IGitHubCommentClient>();
+                services.AddSingleton<IGitHubCommentClient>(_comments);
             },
             configureHost: builder => builder
                 .UseSetting("Seed:Name", AppName)
@@ -76,6 +79,10 @@ public sealed class DeployFlowTests : IAsyncLifetime
         Assert.Equal(Sha, deployed.Sha);
         Assert.Equal("demo:pr12-0123456", deployed.ImageTag);
         Assert.False(Directory.Exists(deployed.ContextDirectory), "clone directory should be cleaned up after the build");
+
+        Assert.Equal(2, _comments.Upserts.Count);
+        Assert.Contains("Deploying preview for PR #12 (sha 0123456)", _comments.Upserts[0].Body);
+        Assert.Contains("Preview ready at https://pr-12-demo.test.ts.net", _comments.Upserts[1].Body);
     }
 
     [Fact]
@@ -101,6 +108,8 @@ public sealed class DeployFlowTests : IAsyncLifetime
         Assert.Equal(2, _cloner.Clones.Count);
         Assert.Equal(newSha, _cloner.Clones[1].Sha);
         Assert.Equal(1, await CountDeploymentsAsync());
+        Assert.Equal(4, _comments.Upserts.Count);
+        Assert.Contains("Preview ready at https://pr-12-demo.test.ts.net (sha fffffff)", _comments.Upserts[^1].Body);
     }
 
     [Fact]
@@ -122,6 +131,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
         Assert.NotNull(deployment);
         Assert.Equal("stopped", deployment.Status);
         Assert.Equal("pr-12-demo", Assert.Single(_containers.Stopped));
+        Assert.Contains("Preview deployment removed for PR #12", _comments.Upserts[^1].Body);
     }
 
     [Fact]
@@ -139,6 +149,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
         Assert.NotNull(deployment);
         Assert.Equal("failed", deployment.Status);
         Assert.Null(deployment.Url);
+        Assert.Contains("Preview deployment failed: build failed", _comments.Upserts[^1].Body);
     }
     private async Task<Deployment?> GetDeployment()
     {
