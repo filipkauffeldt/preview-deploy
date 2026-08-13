@@ -46,7 +46,7 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
 
         var route = Assert.Single(config.Routes);
         Assert.Equal("preview-1-pr12", route.RouteId);
-        Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(route.Match.Hosts));
+        Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(route.Match.Hosts!));
 
         var cluster = Assert.Single(config.Clusters);
         Assert.Equal("preview-1-pr12", cluster.ClusterId);
@@ -81,7 +81,7 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
 
         var updated = provider.GetConfig();
         Assert.Equal(2, updated.Routes.Count);
-        Assert.Single(updated.Routes, r => r.Match.Hosts.Single() == "pr-13-demo.test.ts.net");
+        Assert.Single(updated.Routes, r => r.Match.Hosts!.Single() == "pr-13-demo.test.ts.net");
         Assert.Single(updated.Clusters, c => c.Destinations.Values.Single().Address == "http://pr-13-demo:4000");
         Assert.NotSame(initial, updated);
         Assert.True(initial.ChangeToken.ActiveChangeCallbacks);
@@ -120,7 +120,7 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
 
         var config = GetProvider().GetConfig();
 
-        Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(config.Routes).Match.Hosts.Single());
+        Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(config.Routes).Match.Hosts!.Single());
     }
 
     private PreviewProxyConfigProvider GetProvider() =>

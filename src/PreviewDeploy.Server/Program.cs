@@ -24,6 +24,10 @@ Directory.CreateDirectory(databaseOptions.DataDirectory);
 builder.Services.AddDbContext<PreviewDeployDbContext>(options =>
     options.UseSqlite(databaseOptions.ResolveConnectionString()));
 
+var certsOptions = new CertsOptions();
+builder.Configuration.GetSection(CertsOptions.SectionName).Bind(certsOptions);
+ConfigureHttps(builder.WebHost, certsOptions);
+
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<GitHubOptions>(builder.Configuration.GetSection(GitHubOptions.SectionName));
 builder.Services.Configure<RoutingOptions>(builder.Configuration.GetSection(RoutingOptions.SectionName));
@@ -70,5 +74,33 @@ app.MapDeployEvents();
 app.MapReverseProxy();
 
 app.Run();
+
+static void ConfigureHttps(ConfigureWebHostBuilder webHost, CertsOptions certsOptions)
+{
+    var previewCertPath = Path.Combine(certsOptions.Directory, certsOptions.PreviewCertificateFile);
+    var previewKeyPath = Path.Combine(certsOptions.Directory, certsOptions.PreviewKeyFile);
+    if (!File.Exists(previewCertPath) || !File.Exists(previewKeyPath))
+    {
+        return;
+    }
+
+    var apiCertPath = Path.Combine(certsOptions.Directory, certsOptions.ApiCertificateFile);
+    var apiKeyPath = Path.Combine(certsOptions.Directory, certsOptions.ApiKeyFile);
+    var hasApiCertificate = File.Exists(apiCertPath) && File.Exists(apiKeyPath);
+
+    webHost.ConfigureKestrel(serverOptions =>
+        serverOptions.ListenAnyIP(443, listenOptions =>
+            listenOptions.UseHttps(httpsOptions =>
+                httpsOptions.ServerCertificateSelector = (_, hostName) =>
+                {
+                    if (hasApiCertificate && hostName is not null &&
+                        !hostName.StartsWith("pr-", StringComparison.Ordinal))
+                    {
+                        return CertificateLoader.Load(apiCertPath, apiKeyPath);
+                    }
+
+                    return CertificateLoader.Load(previewCertPath, previewKeyPath);
+                })));
+}
 
 public partial class Program;

@@ -3,13 +3,22 @@ services:
     build: .
     image: preview-deploy-server
     container_name: preview-deploy-server
+    user: root
     ports:
       - "${PREVIEW_DEPLOY_PORT:-8080}:8080"
+      - "${PREVIEW_DEPLOY_HTTPS_PORT:-443}:443"
     environment:
       DATA_DIR: /app/data
+      ROUTING__BASEHOST: ${SERVER_HOSTNAME:-preview-server}.${TAILNET_DOMAIN:?TAILNET_DOMAIN_required}
+      GITHUB__TOKEN: ${GITHUB_PAT:?GITHUB_PAT_required}
+      SEED__NAME: ${SEED_APP_NAME:-}
+      SEED__OWNER: ${SEED_APP_OWNER:-}
+      SEED__REPO: ${SEED_APP_REPO:-}
+      SEED__TOKEN: ${SEED_APP_TOKEN:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/app/data
+      - certs:/certs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -20,9 +29,26 @@ services:
     networks:
       - preview-net
 
+  ts-cert:
+    image: tailscale/tailscale:stable
+    container_name: preview-deploy-ts-cert
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?TS_AUTHKEY_required}
+      TS_HOSTNAME: ${SERVER_HOSTNAME:-preview-server}
+      TS_STATE_DIR: /var/lib/tailscale
+      TAILNET_DOMAIN: ${TAILNET_DOMAIN:?TAILNET_DOMAIN_required}
+      SERVER_HOSTNAME: ${SERVER_HOSTNAME:-preview-server}
+    volumes:
+      - ts-state:/var/lib/tailscale
+      - certs:/certs
+    command: /bin/sh -c 'tailscale cert --cert-file /certs/api.crt --key-file /certs/api.key --renew-cert --sleep 6h --yes "$${SERVER_HOSTNAME}.$${TAILNET_DOMAIN}" & tailscale cert --cert-file /certs/preview.crt --key-file /certs/preview.key --renew-cert --sleep 6h --yes "*.*$${SERVER_HOSTNAME}.$${TAILNET_DOMAIN}" & wait'
+
 networks:
   preview-net:
     name: preview-net
 
 volumes:
   data:
+  certs:
+  ts-state:
