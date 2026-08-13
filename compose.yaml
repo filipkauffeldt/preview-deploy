@@ -42,7 +42,7 @@ services:
     volumes:
       - ts-state:/var/lib/tailscale
       - certs:/certs
-    command: /bin/sh -c 'tailscale cert --cert-file /certs/api.crt --key-file /certs/api.key --renew-cert --sleep 6h --yes "$${SERVER_HOSTNAME}.$${TAILNET_DOMAIN}" & tailscale cert --cert-file /certs/preview.crt --key-file /certs/preview.key --renew-cert --sleep 6h --yes "*.*$${SERVER_HOSTNAME}.$${TAILNET_DOMAIN}" & wait'
+    command: /bin/sh -c 'tailscale cert --cert-file /certs/api.crt --key-file /certs/api.key --renew-cert --sleep 6h --yes "$${SERVER_HOSTNAME}.$${TAILNET_DOMAIN}" & tailscale cert --cert-file /certs/preview.crt --key-file /certs/preview.key --renew-cert --sleep 6h --yes "*.$${SERVER_HOSTNAME}.$${TAILNET_DOMAIN}" & wait'
 
 networks:
   preview-net:

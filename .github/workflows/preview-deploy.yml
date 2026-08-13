@@ -1,0 +1,66 @@
+name: Preview Deploy
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: App name registered on the preview server
+        type: string
+        required: true
+      server-url:
+        description: Preview server base URL, e.g. https://preview-server.example.ts.net
+        type: string
+        required: true
+      tailscale-oauth-client-id:
+        description: Tailscale OAuth client ID (tagged, ACL-limited to the preview server)
+        type: string
+        required: true
+      tailscale-tags:
+        description: Tailscale tags for the ephemeral runner node
+        type: string
+        default: tag:preview-deploy
+    secrets:
+      preview-deploy-token:
+        description: Per-app token registered on the preview server
+        required: true
+      tailscale-oauth-client-secret:
+        description: Tailscale OAuth client secret
+        required: true
+
+jobs:
+  preview-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip fork pull requests
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        shell: bash
+        run: echo "Skipping preview deploy for fork pull requests"
+
+      - name: Join the tailnet
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ inputs.tailscale-oauth-client-id }}
+          oauth-secret: ${{ secrets.tailscale-oauth-client-secret }}
+          tags: ${{ inputs.tailscale-tags }}
+
+      - name: Derive deploy action
+        id: action
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        shell: bash
+        run: |
+          case "${{ github.event.action }}" in
+            closed) echo "action=teardown" ;;
+            *)      echo "action=create" ;;
+          esac >> "$GITHUB_OUTPUT"
+
+      - name: Send deploy event
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${{ secrets.preview-deploy-token }}" \
+            --header "Content-Type: application/json" \
+            --data "{\"app\": \"${{ inputs.app }}\", \"pr\": ${{ github.event.pull_request.number }}, \"sha\": \"${{ github.event.pull_request.head.sha }}\", \"action\": \"${{ steps.action.outputs.action }}\"}" \
+            "${{ inputs.server-url }}/deploy-events"
