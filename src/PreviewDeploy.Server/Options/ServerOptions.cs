@@ -34,6 +34,8 @@ public sealed class DockerOptions
     public string SocketPath { get; set; } = "/var/run/docker.sock";
     public string NetworkName { get; set; } = "preview-net";
     public string WorkDirectory { get; set; } = "/tmp/preview-deploy";
+    public bool AttachNetworkOnStartup { get; set; }
+    public string SelfContainerName { get; set; } = "preview-deploy-server";
 }
 
 public sealed class CertsOptions

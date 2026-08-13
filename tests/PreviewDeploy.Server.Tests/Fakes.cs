@@ -33,6 +33,9 @@ public sealed class FakeContainerRuntime : IContainerRuntime
         Stopped.Add(containerName);
         return Task.CompletedTask;
     }
+
+    public Task AttachToNetworkAsync(string containerName, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
 }
 
 public sealed class FakeGitCloner : IGitCloner

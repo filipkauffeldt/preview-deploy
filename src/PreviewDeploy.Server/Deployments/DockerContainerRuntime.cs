@@ -19,6 +19,8 @@ public interface IContainerRuntime
         CancellationToken cancellationToken);
 
     Task StopAndRemoveAsync(string containerName, CancellationToken cancellationToken);
+
+    Task AttachToNetworkAsync(string containerName, CancellationToken cancellationToken);
 }
 
 public sealed class DockerContainerRuntime : IContainerRuntime
@@ -90,6 +92,24 @@ public sealed class DockerContainerRuntime : IContainerRuntime
             container.ID, new ContainerRemoveParameters { Force = true }, cancellationToken);
 
         _logger.LogInformation("Stopped and removed preview container {ContainerName}", containerName);
+    }
+
+    public async Task AttachToNetworkAsync(string containerName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _client.Networks.ConnectNetworkAsync(
+                _options.NetworkName,
+                new NetworkConnectParameters { Container = containerName },
+                cancellationToken);
+            _logger.LogInformation("Attached {ContainerName} to network {Network}", containerName, _options.NetworkName);
+        }
+        catch (DockerApiException ex) when (
+            ex.Message.Contains("already exists in network", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation(
+                "{ContainerName} is already attached to network {Network}", containerName, _options.NetworkName);
+        }
     }
 
     private async Task BuildImageAsync(string imageTag, string contextDirectory, CancellationToken cancellationToken)

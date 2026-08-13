@@ -69,6 +69,24 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<SeedAppService>().RunAsync(CancellationToken.None);
 }
 
+var dockerOptions = new DockerOptions();
+builder.Configuration.GetSection(DockerOptions.SectionName).Bind(dockerOptions);
+if (dockerOptions.AttachNetworkOnStartup)
+{
+    try
+    {
+        var runtime = app.Services.GetRequiredService<IContainerRuntime>();
+        await runtime.AttachToNetworkAsync(dockerOptions.SelfContainerName, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("Startup")
+            .LogWarning(ex, "Failed to attach {Container} to {Network}; preview routes will be unreachable",
+                dockerOptions.SelfContainerName, dockerOptions.NetworkName);
+    }
+}
+
 app.MapHealthChecks("/health");
 app.MapDeployEvents();
 app.MapReverseProxy();

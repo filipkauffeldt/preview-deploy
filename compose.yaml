@@ -4,9 +4,9 @@ services:
     image: preview-deploy-server
     container_name: preview-deploy-server
     user: root
-    ports:
-      - "${PREVIEW_DEPLOY_PORT:-8080}:8080"
-      - "${PREVIEW_DEPLOY_HTTPS_PORT:-443}:443"
+    network_mode: service:ts-cert
+    depends_on:
+      - ts-cert
     environment:
       DATA_DIR: /app/data
       ROUTING__BASEHOST: ${SERVER_HOSTNAME:-preview-server}.${TAILNET_DOMAIN:?TAILNET_DOMAIN_required}
@@ -15,6 +15,8 @@ services:
       SEED__OWNER: ${SEED_APP_OWNER:-}
       SEED__REPO: ${SEED_APP_REPO:-}
       SEED__TOKEN: ${SEED_APP_TOKEN:-}
+      DOCKER__ATTACHNETWORKONSTARTUP: "true"
+      DOCKER__SELFCONTAINERNAME: preview-deploy-server
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - data:/app/data
@@ -26,8 +28,6 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
-    networks:
-      - preview-net
 
   ts-cert:
     image: tailscale/tailscale:stable
