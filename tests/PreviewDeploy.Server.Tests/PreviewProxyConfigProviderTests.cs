@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PreviewDeploy.Server.Data;
@@ -111,16 +112,55 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
     [Fact]
     public async Task GetConfig_LoadsExistingRunningDeployments_AfterRestart()
     {
-        await InsertDeploymentAsync(12, DeploymentStatus.Running, port: 3000, sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var restartDirectory = Directory.CreateTempSubdirectory("preview-deploy-restart-").FullName;
+        try
+        {
+            using (var first = new TestAppFactory(
+                dataDirectory: restartDirectory,
+                configureHost: builder => builder.UseSetting("Routing:BaseHost", "test.ts.net")))
+            {
+                using var scope = first.CreateDbScope();
+                var db = scope.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
+                var app = new App
+                {
+                    Name = "demo",
+                    Owner = "acme",
+                    Repo = "widgets",
+                    TokenHash = "x",
+                    Port = 8080,
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                };
+                db.Apps.Add(app);
+                db.Deployments.Add(new Deployment
+                {
+                    App = app,
+                    PrNumber = 12,
+                    Sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    Status = DeploymentStatus.Running,
+                    Url = "https://pr-12-demo.test.ts.net",
+                    Port = 3000,
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                });
+                await db.SaveChangesAsync();
+            }
 
-        _factory.Dispose();
-        _factory = new TestAppFactory(
-            dataDirectory: _factory.DataDirectory,
-            configureHost: builder => builder.UseSetting("Routing:BaseHost", "test.ts.net"));
+            using (var restarted = new TestAppFactory(
+                dataDirectory: restartDirectory,
+                configureHost: builder => builder.UseSetting("Routing:BaseHost", "test.ts.net")))
+            {
+                var config = restarted.Services
+                    .GetRequiredService<PreviewProxyConfigProvider>()
+                    .GetConfig();
 
-        var config = GetProvider().GetConfig();
-
-        Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(config.Routes).Match.Hosts!.Single());
+                Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(config.Routes).Match.Hosts!.Single());
+            }
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(restartDirectory, recursive: true);
+        }
     }
 
     private PreviewProxyConfigProvider GetProvider() =>

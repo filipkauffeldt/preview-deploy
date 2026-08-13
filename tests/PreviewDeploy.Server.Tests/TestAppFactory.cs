@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace PreviewDeploy.Server.Tests;
@@ -31,6 +32,7 @@ public sealed class TestAppFactory(
         base.Dispose(disposing);
         if (disposing && dataDirectory is null && Directory.Exists(DataDirectory))
         {
+            SqliteConnection.ClearAllPools();
             Directory.Delete(DataDirectory, recursive: true);
         }
     }
