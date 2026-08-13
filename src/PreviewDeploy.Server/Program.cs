@@ -5,7 +5,10 @@ using PreviewDeploy.Server.Data;
 using PreviewDeploy.Server.Deployments;
 using PreviewDeploy.Server.Endpoints;
 using PreviewDeploy.Server.Options;
+using PreviewDeploy.Server.Routing;
 using PreviewDeploy.Server.Seeding;
+using Yarp.ReverseProxy;
+using Yarp.ReverseProxy.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +43,12 @@ builder.Services.AddHttpClient<IGitHubCommentClient, GitHubCommentClient>(client
     client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
 }).AddHttpMessageHandler<GitHubAuthHandler>();
 builder.Services.AddTransient<GitHubAuthHandler>();
+builder.Services.AddSingleton<PreviewProxyConfigProvider>();
+builder.Services.AddSingleton<IProxyConfigProvider>(
+    sp => sp.GetRequiredService<PreviewProxyConfigProvider>());
+builder.Services.AddSingleton<IPreviewRoutingConfig>(
+    sp => sp.GetRequiredService<PreviewProxyConfigProvider>());
+builder.Services.AddReverseProxy();
 builder.Services.AddHostedService<DeployEventProcessor>();
 
 builder.Services.AddHealthChecks()
@@ -58,6 +67,7 @@ using (var scope = app.Services.CreateScope())
 
 app.MapHealthChecks("/health");
 app.MapDeployEvents();
+app.MapReverseProxy();
 
 app.Run();
 
