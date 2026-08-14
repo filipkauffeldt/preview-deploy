@@ -110,6 +110,23 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task NotifyChanged_SignalsThePreviouslyReturnedConfig()
+    {
+        var provider = GetProvider();
+        var initial = provider.GetConfig();
+        Assert.Empty(initial.Routes);
+
+        var signaled = false;
+        initial.ChangeToken.RegisterChangeCallback(_ => signaled = true, null);
+
+        await InsertDeploymentAsync(12, DeploymentStatus.Running, port: 3000, sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        provider.NotifyChanged();
+
+        Assert.True(signaled, "YARP subscribed to the initial config's token; it must be signalled on change");
+        Assert.Single(provider.GetConfig().Routes);
+    }
+
+    [Fact]
     public async Task GetConfig_LoadsExistingRunningDeployments_AfterRestart()
     {
         var restartDirectory = Directory.CreateTempSubdirectory("preview-deploy-restart-").FullName;

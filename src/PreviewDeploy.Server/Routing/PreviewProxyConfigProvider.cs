@@ -44,10 +44,10 @@ public sealed class PreviewProxyConfigProvider(
     {
         lock (_gate)
         {
+            var previous = _config;
             _config = LoadConfig();
+            previous.SignalChange();
         }
-
-        _config.SignalChange();
     }
 
     private PreviewProxyConfig LoadConfig()
