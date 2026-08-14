@@ -86,7 +86,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UpdateEvent_RedeploysWithNewSha()
+    public async Task CreateEvent_WithNewSha_Redeploys()
     {
         await PostEventAsync("create");
         await EventuallyAsync(
@@ -95,7 +95,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
             "first deployment to run");
 
         var newSha = "ffffffffffffffffffffffffffffffffffffffff";
-        await PostEventAsync("update", sha: newSha);
+        await PostEventAsync("create", sha: newSha);
 
         var deployment = await EventuallyAsync(
             () => GetDeployment(),

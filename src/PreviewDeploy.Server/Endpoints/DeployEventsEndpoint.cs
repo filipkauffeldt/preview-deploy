@@ -10,10 +10,9 @@ namespace PreviewDeploy.Server.Endpoints;
 public static partial class DeployEventsEndpoint
 {
     public const string CreateAction = "create";
-    public const string UpdateAction = "update";
     public const string TeardownAction = "teardown";
 
-    private static readonly string[] AllowedActions = [CreateAction, UpdateAction, TeardownAction];
+    private static readonly string[] AllowedActions = [CreateAction, TeardownAction];
 
     public static IEndpointRouteBuilder MapDeployEvents(this IEndpointRouteBuilder endpoints)
     {
@@ -31,7 +30,7 @@ public static partial class DeployEventsEndpoint
     {
         if (!AllowedActions.Contains(request.Action))
         {
-            return TypedResults.BadRequest("Action must be one of: create, update, teardown");
+            return TypedResults.BadRequest("Action must be one of: create, teardown");
         }
 
         if (request.Pr <= 0)
