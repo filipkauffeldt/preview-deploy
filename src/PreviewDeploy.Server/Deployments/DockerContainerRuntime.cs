@@ -132,25 +132,8 @@ public sealed class DockerContainerRuntime : IContainerRuntime
             cancellationToken);
     }
 
-    private static Stream CreateBuildContextTar(string directory)
-    {
-        var stream = new MemoryStream();
-        using (var writer = new TarWriter(stream, TarEntryFormat.Ustar, leaveOpen: true))
-        {
-            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
-            {
-                var relativePath = Path.GetRelativePath(directory, file).Replace(Path.DirectorySeparatorChar, '/');
-                var entry = new UstarTarEntry(TarEntryType.RegularFile, relativePath)
-                {
-                    DataStream = File.OpenRead(file),
-                };
-                writer.WriteEntry(entry);
-            }
-        }
-
-        stream.Position = 0;
-        return stream;
-    }
+    private static Stream CreateBuildContextTar(string directory) =>
+        BuildContextBuilder.CreateTar(directory);
 
     private async Task<int> ResolvePortAsync(string imageTag, int fallbackPort, CancellationToken cancellationToken)
     {
