@@ -50,7 +50,7 @@ public sealed class DockerContainerRuntime : IContainerRuntime
         await BuildImageAsync(imageTag, contextDirectory, cancellationToken);
         var port = await ResolvePortAsync(imageTag, fallbackPort, cancellationToken);
 
-        await TryStopAndRemoveAsync(containerName, cancellationToken);
+        await StopAndRemoveAsync(containerName, cancellationToken);
 
         var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
         {
@@ -151,20 +151,6 @@ public sealed class DockerContainerRuntime : IContainerRuntime
         var slash = exposedPort.IndexOf('/');
         var portPart = slash >= 0 ? exposedPort[..slash] : exposedPort;
         return int.TryParse(portPart, out var port) ? port : 0;
-    }
-
-    private async Task TryStopAndRemoveAsync(string containerName, CancellationToken cancellationToken)
-    {
-        var container = await FindContainerAsync(containerName, cancellationToken);
-        if (container is null)
-        {
-            return;
-        }
-
-        await _client.Containers.StopContainerAsync(
-            container.ID, new ContainerStopParameters { WaitBeforeKillSeconds = 10 }, cancellationToken);
-        await _client.Containers.RemoveContainerAsync(
-            container.ID, new ContainerRemoveParameters { Force = true }, cancellationToken);
     }
 
     private async Task<ContainerListResponse?> FindContainerAsync(string containerName, CancellationToken cancellationToken)
