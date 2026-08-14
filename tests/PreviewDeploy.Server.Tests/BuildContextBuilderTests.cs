@@ -86,6 +86,7 @@ public sealed class BuildContextBuilderTests : IDisposable
             entries.Add(entry.Name);
         }
 
+        entries.Sort();
         return entries;
     }
 }
