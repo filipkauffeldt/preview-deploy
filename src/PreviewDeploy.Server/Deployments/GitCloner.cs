@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace PreviewDeploy.Server.Deployments;
 
@@ -30,12 +31,15 @@ public sealed class GitCloner : IGitCloner
             $"{repo}-pr{prNumber}-{Guid.NewGuid().ToString("N")[..8]}");
         Directory.CreateDirectory(directory);
 
-        var remoteUrl = $"https://x-access-token:{token}@github.com/{owner}/{repo}.git";
+        var remoteUrl = $"https://github.com/{owner}/{repo}.git";
+        var authorization =
+            $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token}"))}";
         await RunAsync(directory, ["init", "-q"], cancellationToken);
         await RunAsync(directory, ["remote", "add", "origin", remoteUrl], cancellationToken);
         await RunAsync(
             directory,
-            ["fetch", "-q", "--depth", "1", "origin", $"refs/pull/{prNumber}/head"],
+            ["-c", $"http.extraHeader=Authorization: {authorization}",
+             "fetch", "-q", "--depth", "1", "origin", $"refs/pull/{prNumber}/head"],
             cancellationToken);
         await RunAsync(directory, ["checkout", "-q", sha], cancellationToken);
 
