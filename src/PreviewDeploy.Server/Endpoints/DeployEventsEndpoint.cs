@@ -39,7 +39,7 @@ public static partial class DeployEventsEndpoint
             return TypedResults.BadRequest("Pr must be a positive integer");
         }
 
-        if (!ShaRegex().IsMatch(request.Sha))
+        if (request.Action != TeardownAction && !ShaRegex().IsMatch(request.Sha))
         {
             return TypedResults.BadRequest("Sha must be a git commit hash");
         }

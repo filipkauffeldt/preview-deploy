@@ -77,6 +77,13 @@ public sealed class DeployEventsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Post_TeardownWithoutSha_IsAccepted()
+    {
+        var response = await PostEventAsync(new DeployEventRequest(AppName, 12, "", "teardown"), token: AppToken);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Post_WithValidToken_AcceptsAndRecordsEvent()
     {
         var response = await PostEventAsync(CreateRequest("create"), token: AppToken);
