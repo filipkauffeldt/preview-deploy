@@ -101,9 +101,10 @@ public sealed class DeployEventProcessor(
             deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 
+            routingConfig.NotifyChanged();
+
             await TryPostCommentAsync(db, app, request.Pr,
                 $"Preview ready at {deployment.Url} (sha {ShortSha(request.Sha)})");
-            routingConfig.NotifyChanged();
 
             logger.LogInformation(
                 "Preview for app {App} PR {Pr} is running at {Url} (sha {Sha})",
@@ -139,9 +140,10 @@ public sealed class DeployEventProcessor(
         deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
+        routingConfig.NotifyChanged();
+
         await TryPostCommentAsync(db, app, deployment.PrNumber,
             $"Preview deployment removed for PR #{deployment.PrNumber}");
-        routingConfig.NotifyChanged();
 
         logger.LogInformation("Tore down preview for app {App} PR {Pr}", app.Name, deployment.PrNumber);
     }
