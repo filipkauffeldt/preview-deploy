@@ -45,6 +45,7 @@ builder.Services.AddHttpClient<IGitHubCommentClient, GitHubCommentClient>(client
     client.BaseAddress = new Uri("https://api.github.com");
     client.DefaultRequestHeaders.UserAgent.ParseAdd("preview-deploy");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    client.Timeout = TimeSpan.FromSeconds(30);
 }).AddHttpMessageHandler<GitHubAuthHandler>();
 builder.Services.AddTransient<GitHubAuthHandler>();
 builder.Services.AddSingleton<PreviewProxyConfigProvider>();
