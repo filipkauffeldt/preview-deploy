@@ -169,7 +169,7 @@ public sealed class DeployEventProcessor(
     private string BuildPreviewUrl(string appName, int prNumber) =>
         $"https://{DeploymentNames.Subdomain(appName, prNumber)}.{routingOptions.Value.BaseHost}";
 
-    private static void TryDeleteDirectory(string directory)
+    private void TryDeleteDirectory(string directory)
     {
         try
         {
@@ -178,8 +178,9 @@ public sealed class DeployEventProcessor(
                 Directory.Delete(directory, recursive: true);
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger.LogDebug(ex, "Failed to delete clone directory {Directory}", directory);
         }
     }
 }
