@@ -13,7 +13,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl git \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /app/data \
     && chown $APP_UID /app/data
@@ -24,6 +24,6 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     DATA_DIR=/app/data
 
 USER $APP_UID
-EXPOSE 8080
+EXPOSE 8080 443
 
 ENTRYPOINT ["dotnet", "PreviewDeploy.Server.dll"]

@@ -1,0 +1,25 @@
+# Copy this file to YOUR repo as .github/workflows/preview-deploy.yml and fill in:
+#   app            - the app name you registered on the preview server
+#   server-url     - the preview server base URL, e.g. https://preview-server.example.ts.net
+#   vars:          - TAILSCALE_OAUTH_CLIENT_ID (or hardcode the value)
+#   secrets:       - PREVIEW_DEPLOY_TOKEN (per-app token), TAILSCALE_OAUTH_CLIENT_SECRET
+name: Preview Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+jobs:
+  preview-deploy:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    uses: filipkauffeldt/preview-deploy/.github/workflows/preview-deploy.yml@main
+    with:
+      app: my-app
+      server-url: https://preview-server.example.ts.net
+      tailscale-oauth-client-id: ${{ vars.TAILSCALE_OAUTH_CLIENT_ID }}
+    secrets:
+      preview-deploy-token: ${{ secrets.PREVIEW_DEPLOY_TOKEN }}
+      tailscale-oauth-client-secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}

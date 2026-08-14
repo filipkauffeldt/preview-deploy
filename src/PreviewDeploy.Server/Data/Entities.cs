@@ -3,8 +3,11 @@ namespace PreviewDeploy.Server.Data;
 public sealed class App
 {
     public int Id { get; set; }
+    public string Name { get; set; } = "";
     public string Owner { get; set; } = "";
     public string Repo { get; set; } = "";
+    public string TokenHash { get; set; } = "";
+    public int Port { get; set; } = 8080;
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     public List<DeployEvent> Events { get; } = [];
@@ -31,6 +34,7 @@ public sealed class Deployment
     public string Sha { get; set; } = "";
     public string Status { get; set; } = "";
     public string? Url { get; set; }
+    public int Port { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }
