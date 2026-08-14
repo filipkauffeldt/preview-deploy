@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using PreviewDeploy.Server.Data;
 
@@ -20,10 +19,9 @@ public sealed class AppTokenValidator(PreviewDeployDbContext db)
             return null;
         }
 
-        var candidateHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(bearerToken)));
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(candidateHash),
-            Encoding.UTF8.GetBytes(app.TokenHash))
+        var candidate = Convert.FromHexString(AppToken.Hash(bearerToken));
+        var stored = Convert.FromHexString(app.TokenHash);
+        return CryptographicOperations.FixedTimeEquals(candidate, stored)
             ? app
             : null;
     }
