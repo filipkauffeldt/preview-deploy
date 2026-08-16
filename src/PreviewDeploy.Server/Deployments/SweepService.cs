@@ -27,37 +27,47 @@ public sealed class SweepService(
         foreach (var deployment in deployments)
         {
             var app = deployment.App;
-
-            var ttlExpired = deployment.UpdatedAtUtc <
-                DateTimeOffset.UtcNow - TimeSpan.FromDays(Math.Max(app.TtlDays, 0));
-            if (ttlExpired)
+            var reason = await TeardownReasonAsync(app, deployment, cancellationToken);
+            if (reason is null)
             {
-                logger.LogInformation("Sweep: deployment for app {App} PR {Pr} exceeded TTL ({TtlDays} days)",
-                    app.Name, deployment.PrNumber, app.TtlDays);
-                await teardown.TeardownAsync(app, deployment, cancellationToken);
                 continue;
             }
 
-            try
-            {
-                if (!await pullRequests.IsClosedAsync(app.Owner, app.Repo, deployment.PrNumber, cancellationToken))
-                {
-                    continue;
-                }
-
-                logger.LogInformation("Sweep: PR {Pr} for app {App} is closed; tearing down",
-                    deployment.PrNumber, app.Name);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Sweep: could not check PR {Pr} for app {App}; leaving deployment alone",
-                    deployment.PrNumber, app.Name);
-                continue;
-            }
-
+            logger.LogInformation("Sweep: tearing down app {App} PR {Pr}: {Reason}",
+                app.Name, deployment.PrNumber, reason);
             await teardown.TeardownAsync(app, deployment, cancellationToken);
         }
 
+        await TryPruneImagesAsync(cancellationToken);
+    }
+
+    private async Task<string?> TeardownReasonAsync(
+        App app, Deployment deployment, CancellationToken cancellationToken)
+    {
+        if (TtlExpired(app, deployment))
+        {
+            return $"TTL exceeded ({app.TtlDays} days)";
+        }
+
+        try
+        {
+            return await pullRequests.IsClosedAsync(app.Owner, app.Repo, deployment.PrNumber, cancellationToken)
+                ? "PR is closed or merged"
+                : null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Sweep: could not check PR {Pr} for app {App}; leaving deployment alone",
+                deployment.PrNumber, app.Name);
+            return null;
+        }
+    }
+
+    private static bool TtlExpired(App app, Deployment deployment) =>
+        deployment.UpdatedAtUtc < DateTimeOffset.UtcNow - TimeSpan.FromDays(Math.Max(app.TtlDays, 0));
+
+    private async Task TryPruneImagesAsync(CancellationToken cancellationToken)
+    {
         try
         {
             await containers.PruneImagesAsync(cancellationToken);

@@ -115,10 +115,13 @@ public sealed class DockerContainerRuntime : IContainerRuntime
     public async Task PruneImagesAsync(CancellationToken cancellationToken)
     {
         var pruned = await _client.Images.PruneImagesAsync(new ImagesPruneParameters(), cancellationToken);
-        if (pruned?.ImagesDeleted is not null)
+        var imagesDeleted = pruned?.ImagesDeleted;
+        if (imagesDeleted is not { Count: > 0 })
         {
-            _logger.LogInformation("Pruned {Count} dangling build images", pruned.ImagesDeleted.Count);
+            return;
         }
+
+        _logger.LogInformation("Pruned {Count} dangling build images", imagesDeleted.Count);
     }
 
     private static bool IsImageNotFound(DockerApiException exception) =>
