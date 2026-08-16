@@ -1,5 +1,6 @@
 using System.Formats.Tar;
 using PreviewDeploy.Server.Deployments;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -21,7 +22,7 @@ public sealed class BuildContextBuilderTests : IDisposable
 
         var entries = TarEntries();
 
-        Assert.Equal(["app.cs"], entries);
+        entries.ShouldBe(["app.cs"]);
     }
 
     [Fact]
@@ -33,7 +34,7 @@ public sealed class BuildContextBuilderTests : IDisposable
 
         var entries = TarEntries();
 
-        Assert.Equal(["a.txt", "sub/b.txt"], entries);
+        entries.ShouldBe(["a.txt", "sub/b.txt"]);
     }
 
     [Fact]
@@ -47,7 +48,7 @@ public sealed class BuildContextBuilderTests : IDisposable
 
         var entries = TarEntries();
 
-        Assert.Equal([".dockerignore", "kept.txt"], entries);
+        entries.ShouldBe([".dockerignore", "kept.txt"]);
     }
 
     [Fact]
@@ -59,7 +60,7 @@ public sealed class BuildContextBuilderTests : IDisposable
 
         var entries = TarEntries();
 
-        Assert.Equal([".dockerignore", "keep.txt"], entries);
+        entries.ShouldBe([".dockerignore", "keep.txt"]);
     }
 
     [Fact]
@@ -72,7 +73,7 @@ public sealed class BuildContextBuilderTests : IDisposable
 
         var entries = TarEntries();
 
-        Assert.Equal([".dockerignore", "src/Program.cs"], entries);
+        entries.ShouldBe([".dockerignore", "src/Program.cs"]);
     }
 
     private List<string> TarEntries()

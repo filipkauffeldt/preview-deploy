@@ -2,8 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using PreviewDeploy.Server.Data;
 using PreviewDeploy.Server.Deployments;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -12,23 +15,32 @@ public sealed class SweepTests : IAsyncLifetime
     private const string AppName = "demo";
     private const string Sha = "0123456789abcdef0123456789abcdef01234567";
 
-    private readonly FakeContainerRuntime _containers = new();
-    private readonly FakeGitHubCommentClient _comments = new();
-    private readonly FakeGitHubPullRequestClient _pullRequests = new();
+    private readonly IContainerRuntime _containers = Substitute.For<IContainerRuntime>();
+    private readonly IGitHubCommentClient _comments = Substitute.For<IGitHubCommentClient>();
+    private readonly IGitHubPullRequestClient _pullRequests = Substitute.For<IGitHubPullRequestClient>();
+    private readonly List<string> _commentBodies = [];
     private TestAppFactory _factory = null!;
     private SweepService _sweep = null!;
 
     public async Task InitializeAsync()
     {
+        _comments.UpsertAsync(
+            Arg.Any<App>(), Arg.Any<int>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                _commentBodies.Add(ci.ArgAt<string>(2));
+                return Task.CompletedTask;
+            });
+
         _factory = new TestAppFactory(
             configureServices: services =>
             {
                 services.RemoveAll<IContainerRuntime>();
-                services.AddSingleton<IContainerRuntime>(_containers);
+                services.AddSingleton(_containers);
                 services.RemoveAll<IGitHubCommentClient>();
-                services.AddSingleton<IGitHubCommentClient>(_comments);
+                services.AddSingleton(_comments);
                 services.RemoveAll<IGitHubPullRequestClient>();
-                services.AddSingleton<IGitHubPullRequestClient>(_pullRequests);
+                services.AddSingleton(_pullRequests);
 
                 var sweepHosted = services
                     .Where(d => d.ServiceType == typeof(IHostedService) &&
@@ -56,17 +68,15 @@ public sealed class SweepTests : IAsyncLifetime
     {
         var app = await CreateAppAsync();
         await CreateDeploymentAsync(app, pr: 12);
-        _pullRequests.Closed[12] = true;
+        _pullRequests.IsClosedAsync("acme", "widgets", 12, Arg.Any<CancellationToken>()).Returns(true);
 
         await _sweep.RunOnceAsync(CancellationToken.None);
 
-        var deployment = await GetDeploymentAsync(12);
-        Assert.Equal(DeploymentStatus.Stopped, deployment.Status);
-        Assert.Equal("pr-12-demo", Assert.Single(_containers.Stopped));
-        Assert.Equal("demo:pr12-0123456", Assert.Single(_containers.RemovedImages));
-        Assert.True(_containers.PruneCalls > 0, "sweep should prune dangling images");
-        Assert.Contains(_comments.Upserts,
-            u => u.Pr == 12 && u.Body.Contains("Preview deployment removed for PR #12"));
+        (await GetDeploymentAsync(12)).Status.ShouldBe(DeploymentStatus.Stopped);
+        await _containers.Received(1).StopAndRemoveAsync("pr-12-demo", Arg.Any<CancellationToken>());
+        await _containers.Received(1).RemoveImageAsync("demo:pr12-0123456", Arg.Any<CancellationToken>());
+        await _containers.Received(1).PruneImagesAsync(Arg.Any<CancellationToken>());
+        _commentBodies.ShouldHaveSingleItem().ShouldContain("Preview deployment removed for PR #12");
     }
 
     [Fact]
@@ -74,14 +84,14 @@ public sealed class SweepTests : IAsyncLifetime
     {
         var app = await CreateAppAsync();
         await CreateDeploymentAsync(app, pr: 12);
+        _pullRequests.IsClosedAsync("acme", "widgets", 12, Arg.Any<CancellationToken>()).Returns(false);
 
         await _sweep.RunOnceAsync(CancellationToken.None);
 
-        var deployment = await GetDeploymentAsync(12);
-        Assert.Equal(DeploymentStatus.Running, deployment.Status);
-        Assert.Empty(_containers.Stopped);
-        Assert.Empty(_containers.RemovedImages);
-        Assert.Empty(_comments.Upserts);
+        (await GetDeploymentAsync(12)).Status.ShouldBe(DeploymentStatus.Running);
+        await _containers.DidNotReceive().StopAndRemoveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _containers.DidNotReceive().RemoveImageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        _commentBodies.ShouldBeEmpty();
     }
 
     [Fact]
@@ -93,12 +103,12 @@ public sealed class SweepTests : IAsyncLifetime
 
         await _sweep.RunOnceAsync(CancellationToken.None);
 
-        var deployment = await GetDeploymentAsync(12);
-        Assert.Equal(DeploymentStatus.Stopped, deployment.Status);
-        Assert.Equal("pr-12-demo", Assert.Single(_containers.Stopped));
-        Assert.Equal("demo:pr12-0123456", Assert.Single(_containers.RemovedImages));
-        Assert.Contains(_comments.Upserts,
-            u => u.Pr == 12 && u.Body.Contains("Preview deployment removed for PR #12"));
+        (await GetDeploymentAsync(12)).Status.ShouldBe(DeploymentStatus.Stopped);
+        await _containers.Received(1).StopAndRemoveAsync("pr-12-demo", Arg.Any<CancellationToken>());
+        await _containers.Received(1).RemoveImageAsync("demo:pr12-0123456", Arg.Any<CancellationToken>());
+        await _pullRequests.DidNotReceive().IsClosedAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        _commentBodies.ShouldHaveSingleItem().ShouldContain("Preview deployment removed for PR #12");
     }
 
     [Fact]
@@ -106,15 +116,16 @@ public sealed class SweepTests : IAsyncLifetime
     {
         var app = await CreateAppAsync();
         await CreateDeploymentAsync(app, pr: 12);
-        _pullRequests.FailChecks = true;
+        _pullRequests.IsClosedAsync("acme", "widgets", 12, Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("github down"));
 
         await _sweep.RunOnceAsync(CancellationToken.None);
 
-        var deployment = await GetDeploymentAsync(12);
-        Assert.Equal(DeploymentStatus.Running, deployment.Status);
-        Assert.Empty(_containers.Stopped);
-        Assert.Empty(_containers.RemovedImages);
-        Assert.NotEmpty(_pullRequests.Checked);
+        (await GetDeploymentAsync(12)).Status.ShouldBe(DeploymentStatus.Running);
+        await _containers.DidNotReceive().StopAndRemoveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _containers.DidNotReceive().RemoveImageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _pullRequests.Received(1).IsClosedAsync(
+            "acme", "widgets", 12, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -124,18 +135,16 @@ public sealed class SweepTests : IAsyncLifetime
         await CreateDeploymentAsync(app, pr: 12, status: DeploymentStatus.Building);
         await CreateDeploymentAsync(app, pr: 13, status: DeploymentStatus.Failed);
         await CreateDeploymentAsync(app, pr: 14, status: DeploymentStatus.Stopped);
-        _pullRequests.Closed[12] = true;
-        _pullRequests.Closed[13] = true;
-        _pullRequests.Closed[14] = true;
 
         await _sweep.RunOnceAsync(CancellationToken.None);
 
-        Assert.Empty(_containers.Stopped);
-        Assert.Empty(_containers.RemovedImages);
-        Assert.Empty(_pullRequests.Checked);
-        Assert.Equal(DeploymentStatus.Building, (await GetDeploymentAsync(12)).Status);
-        Assert.Equal(DeploymentStatus.Failed, (await GetDeploymentAsync(13)).Status);
-        Assert.Equal(DeploymentStatus.Stopped, (await GetDeploymentAsync(14)).Status);
+        await _containers.DidNotReceive().StopAndRemoveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _containers.DidNotReceive().RemoveImageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _pullRequests.DidNotReceive().IsClosedAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        (await GetDeploymentAsync(12)).Status.ShouldBe(DeploymentStatus.Building);
+        (await GetDeploymentAsync(13)).Status.ShouldBe(DeploymentStatus.Failed);
+        (await GetDeploymentAsync(14)).Status.ShouldBe(DeploymentStatus.Stopped);
     }
 
     private async Task<App> CreateAppAsync(int ttlDays = 14)

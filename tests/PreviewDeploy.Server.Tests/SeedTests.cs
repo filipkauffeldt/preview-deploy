@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PreviewDeploy.Server.Auth;
 using PreviewDeploy.Server.Data;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -20,11 +21,11 @@ public sealed class SeedTests
         var db = scope.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
 
         var app = await db.Apps.SingleAsync(a => a.Name == "demo");
-        Assert.Equal("acme", app.Owner);
-        Assert.Equal("widgets", app.Repo);
-        Assert.Equal(AppToken.Hash("top-secret"), app.TokenHash);
-        Assert.NotEqual("top-secret", app.TokenHash);
-        Assert.Equal(14, app.TtlDays);
+        app.Owner.ShouldBe("acme");
+        app.Repo.ShouldBe("widgets");
+        app.TokenHash.ShouldBe(AppToken.Hash("top-secret"));
+        app.TokenHash.ShouldNotBe("top-secret");
+        app.TtlDays.ShouldBe(14);
     }
 
     [Fact]
@@ -40,7 +41,7 @@ public sealed class SeedTests
         var db = scope.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
 
         var app = await db.Apps.SingleAsync();
-        Assert.Equal(AppToken.Hash("first-token"), app.TokenHash);
+        app.TokenHash.ShouldBe(AppToken.Hash("first-token"));
 
         await db.Apps.Where(a => a.Id == app.Id)
             .ExecuteUpdateAsync(setters => setters
@@ -58,7 +59,7 @@ public sealed class SeedTests
         using var scope2 = factory2.CreateDbScope();
         var db2 = scope2.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
         var reloaded = await db2.Apps.SingleAsync();
-        Assert.Equal("widgets", reloaded.Repo);
-        Assert.Equal(AppToken.Hash("first-token"), reloaded.TokenHash);
+        reloaded.Repo.ShouldBe("widgets");
+        reloaded.TokenHash.ShouldBe(AppToken.Hash("first-token"));
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PreviewDeploy.Server.Data;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -13,12 +14,12 @@ public sealed class SchemaTests
         using var scope = factory.CreateDbScope();
         var db = scope.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
 
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        (await db.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
 
         var tables = await QueryTableNames(db);
-        Assert.Contains("apps", tables);
-        Assert.Contains("deploy_events", tables);
-        Assert.Contains("deployments", tables);
+        tables.ShouldContain("apps");
+        tables.ShouldContain("deploy_events");
+        tables.ShouldContain("deployments");
     }
 
     [Fact]
@@ -37,8 +38,8 @@ public sealed class SchemaTests
         await db.SaveChangesAsync();
 
         var loaded = await db.Apps.SingleAsync();
-        Assert.Equal("filipkauffeldt", loaded.Owner);
-        Assert.Equal("example-app", loaded.Repo);
+        loaded.Owner.ShouldBe("filipkauffeldt");
+        loaded.Repo.ShouldBe("example-app");
     }
 
     private static async Task<List<string>> QueryTableNames(PreviewDeployDbContext db)

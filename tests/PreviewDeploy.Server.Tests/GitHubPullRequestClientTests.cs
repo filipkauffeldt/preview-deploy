@@ -1,5 +1,7 @@
 using System.Net;
+using NSubstitute;
 using PreviewDeploy.Server.Deployments;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -8,67 +10,59 @@ public sealed class GitHubPullRequestClientTests
     [Fact]
     public async Task IsClosed_ReturnsTrue_WhenPullRequestStateIsClosed()
     {
-        var recorder = new StubHandler
-        {
-            Responder = _ => new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"state": "closed"}"""),
-            },
-        };
-        var client = CreateClient(recorder);
+        var handler = CreateHandler("""{"state": "closed"}""");
+        var client = CreateClient(handler);
 
         var closed = await client.IsClosedAsync("acme", "widgets", 12, CancellationToken.None);
 
-        Assert.True(closed);
-        var request = Assert.Single(recorder.Requests);
-        Assert.Equal("/repos/acme/widgets/pulls/12", request.RequestUri!.AbsolutePath);
+        closed.ShouldBeTrue();
+        var request = SentRequest(handler);
+        request.RequestUri!.AbsolutePath.ShouldBe("/repos/acme/widgets/pulls/12");
     }
 
     [Fact]
     public async Task IsClosed_ReturnsFalse_WhenPullRequestIsOpen()
     {
-        var recorder = new StubHandler
-        {
-            Responder = _ => new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"state": "open"}"""),
-            },
-        };
-        var client = CreateClient(recorder);
+        var handler = CreateHandler("""{"state": "open"}""");
+        var client = CreateClient(handler);
 
         var closed = await client.IsClosedAsync("acme", "widgets", 12, CancellationToken.None);
 
-        Assert.False(closed);
+        closed.ShouldBeFalse();
     }
 
     [Fact]
     public async Task IsClosed_Throws_WhenGitHubReturnsAnError()
     {
-        var recorder = new StubHandler
-        {
-            Responder = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError),
-        };
-        var client = CreateClient(recorder);
+        var handler = Substitute.For<MockHttpMessageHandler>();
+        handler.MockSend(Arg.Any<HttpRequestMessage>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var client = CreateClient(handler);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Should.ThrowAsync<InvalidOperationException>(
             () => client.IsClosedAsync("acme", "widgets", 12, CancellationToken.None));
     }
 
-    private static GitHubPullRequestClient CreateClient(StubHandler handler) =>
+    private static MockHttpMessageHandler CreateHandler(string stateJson)
+    {
+        var handler = Substitute.For<MockHttpMessageHandler>();
+        handler.MockSend(Arg.Any<HttpRequestMessage>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(stateJson),
+            });
+        return handler;
+    }
+
+    private static GitHubPullRequestClient CreateClient(MockHttpMessageHandler handler) =>
         new(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
 
-    private sealed class StubHandler : HttpMessageHandler
+    private static HttpRequestMessage SentRequest(MockHttpMessageHandler handler)
     {
-        public Func<HttpRequestMessage, HttpResponseMessage> Responder { get; init; } = _ =>
-            new HttpResponseMessage(HttpStatusCode.OK);
-
-        public List<HttpRequestMessage> Requests { get; } = [];
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Requests.Add(request);
-            return Task.FromResult(Responder(request));
-        }
+        var request = handler.ReceivedCalls()
+            .Select(call => call.GetArguments()[0])
+            .Cast<HttpRequestMessage>()
+            .ShouldHaveSingleItem();
+        return request;
     }
 }

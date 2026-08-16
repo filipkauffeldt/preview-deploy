@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text.Json;
+using NSubstitute;
 using PreviewDeploy.Server.Data;
 using PreviewDeploy.Server.Deployments;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -12,72 +14,73 @@ public sealed class GitHubCommentClientTests
     [Fact]
     public async Task Upsert_CreatesCommentWithMarker_WhenNoStickyCommentExists()
     {
-        var recorder = new StubHandler
-        {
-            Responder = request => new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("[]"),
-            },
-        };
-        var client = CreateClient(recorder);
+        var handler = CreateHandler("[]");
+        var client = CreateClient(handler);
 
         await client.UpsertAsync(CreateApp(), 12, "Deploying preview for PR #12...", CancellationToken.None);
 
-        var post = recorder.Requests.Single(r => r.Method == HttpMethod.Post);
-        Assert.Equal("/repos/acme/widgets/issues/12/comments", post.RequestUri!.AbsolutePath);
+        var post = SentRequest(handler, HttpMethod.Post);
+        post.RequestUri!.AbsolutePath.ShouldBe("/repos/acme/widgets/issues/12/comments");
         var body = JsonSerializer.Deserialize<JsonElement>(await post.Content!.ReadAsStringAsync());
-        Assert.Equal($"Deploying preview for PR #12...\n\n{Marker}", body.GetProperty("body").GetString());
+        body.GetProperty("body").GetString().ShouldBe($"Deploying preview for PR #12...\n\n{Marker}");
+        SentRequests(handler).ShouldNotContain(r => r.Method == HttpMethod.Patch);
     }
 
     [Fact]
     public async Task Upsert_UpdatesExistingStickyComment_WhenFound()
     {
-        var recorder = new StubHandler
-        {
-            Responder = request => request.Method == HttpMethod.Get
-                ? new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(
-                        """[{"id": 42, "body": "old status\n\n<!-- preview-deploy -->"}]"""),
-                }
-                : new HttpResponseMessage(HttpStatusCode.OK),
-        };
-        var client = CreateClient(recorder);
+        var handler = CreateHandler("""[{"id": 42, "body": "old status\n\n<!-- preview-deploy -->"}]""");
+        var client = CreateClient(handler);
 
         await client.UpsertAsync(CreateApp(), 12, "Preview ready at https://pr-12-demo.test.ts.net", CancellationToken.None);
 
-        var patch = recorder.Requests.Single(r => r.Method == HttpMethod.Patch);
-        Assert.Equal("/repos/acme/widgets/issues/comments/42", patch.RequestUri!.AbsolutePath);
+        var patch = SentRequest(handler, HttpMethod.Patch);
+        patch.RequestUri!.AbsolutePath.ShouldBe("/repos/acme/widgets/issues/comments/42");
         var body = JsonSerializer.Deserialize<JsonElement>(await patch.Content!.ReadAsStringAsync());
-        Assert.Equal(
-            "Preview ready at https://pr-12-demo.test.ts.net\n\n<!-- preview-deploy -->",
-            body.GetProperty("body").GetString());
-        Assert.DoesNotContain(recorder.Requests, r => r.Method == HttpMethod.Post);
+        body.GetProperty("body").GetString()
+            .ShouldBe($"Preview ready at https://pr-12-demo.test.ts.net\n\n{Marker}");
+        SentRequests(handler).ShouldNotContain(r => r.Method == HttpMethod.Post);
     }
 
     [Fact]
     public async Task Upsert_IgnoresOtherCommentsOnTheIssue()
     {
-        var recorder = new StubHandler
-        {
-            Responder = request => request.Method == HttpMethod.Get
-                ? new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(
-                        """[{"id": 1, "body": "nice work"}, {"id": 2, "body": "second look"}, {"id": 3, "body": "the sticky one\n\n<!-- preview-deploy -->"}]"""),
-                }
-                : new HttpResponseMessage(HttpStatusCode.OK),
-        };
-        var client = CreateClient(recorder);
+        var handler = CreateHandler(
+            """[{"id": 1, "body": "nice work"}, {"id": 2, "body": "second look"}, {"id": 3, "body": "the sticky one\n\n<!-- preview-deploy -->"}]""");
+        var client = CreateClient(handler);
 
         await client.UpsertAsync(CreateApp(), 12, "new status", CancellationToken.None);
 
-        var patch = recorder.Requests.Single(r => r.Method == HttpMethod.Patch);
-        Assert.Equal("/repos/acme/widgets/issues/comments/3", patch.RequestUri!.AbsolutePath);
+        var patch = SentRequest(handler, HttpMethod.Patch);
+        patch.RequestUri!.AbsolutePath.ShouldBe("/repos/acme/widgets/issues/comments/3");
     }
 
-    private static GitHubCommentClient CreateClient(StubHandler handler) =>
+    private static MockHttpMessageHandler CreateHandler(string commentsJson)
+    {
+        var handler = Substitute.For<MockHttpMessageHandler>();
+        handler.MockSend(Arg.Any<HttpRequestMessage>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(commentsJson),
+            });
+        return handler;
+    }
+
+    private static GitHubCommentClient CreateClient(MockHttpMessageHandler handler) =>
         new(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+
+    private static List<HttpRequestMessage> SentRequests(MockHttpMessageHandler handler) =>
+        handler.ReceivedCalls()
+            .Select(call => call.GetArguments()[0])
+            .Cast<HttpRequestMessage>()
+            .ToList();
+
+    private static HttpRequestMessage SentRequest(MockHttpMessageHandler handler, HttpMethod method)
+    {
+        var request = SentRequests(handler).Single(r => r.Method == method);
+        request.ShouldNotBeNull();
+        return request;
+    }
 
     private static App CreateApp() => new()
     {
@@ -88,19 +91,4 @@ public sealed class GitHubCommentClientTests
         TokenHash = "x",
         CreatedAtUtc = DateTimeOffset.UtcNow,
     };
-
-    private sealed class StubHandler : HttpMessageHandler
-    {
-        public Func<HttpRequestMessage, HttpResponseMessage> Responder { get; init; } = _ =>
-            new HttpResponseMessage(HttpStatusCode.OK);
-
-        public List<HttpRequestMessage> Requests { get; } = [];
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Requests.Add(request);
-            return Task.FromResult(Responder(request));
-        }
-    }
 }

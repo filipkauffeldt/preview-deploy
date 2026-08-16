@@ -1,4 +1,5 @@
 using PreviewDeploy.Server.Data;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -13,7 +14,7 @@ public sealed class DatabaseOptionsTests
             FileName = "preview-deploy.db",
         };
 
-        Assert.Equal("Data Source=/app/data/preview-deploy.db", options.ResolveConnectionString());
+        options.ResolveConnectionString().ShouldBe("Data Source=/app/data/preview-deploy.db");
     }
 
     [Fact]
@@ -21,7 +22,7 @@ public sealed class DatabaseOptionsTests
     {
         var options = new DatabaseOptions();
 
-        Assert.Equal(".", options.DataDirectory);
-        Assert.Equal("preview-deploy.db", options.FileName);
+        options.DataDirectory.ShouldBe(".");
+        options.FileName.ShouldBe("preview-deploy.db");
     }
 }
