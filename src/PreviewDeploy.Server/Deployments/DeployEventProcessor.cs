@@ -47,25 +47,45 @@ public sealed class DeployEventProcessor(
             return;
         }
 
-        var deployment = await db.Deployments
-            .SingleOrDefaultAsync(d => d.AppId == app.Id && d.PrNumber == request.Pr, cancellationToken);
-        if (deployment is null)
-        {
-            deployment = new Deployment
-            {
-                AppId = app.Id,
-                PrNumber = request.Pr,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            };
-            db.Deployments.Add(deployment);
-        }
+        var deployment = await GetOrCreateDeploymentAsync(db, app, request.Pr, cancellationToken);
 
         if (request.Action == DeployEventsEndpoint.TeardownAction)
         {
-            await TeardownAsync(db, app, deployment, cancellationToken);
+            var teardown = scope.ServiceProvider.GetRequiredService<DeploymentTeardownService>();
+            await teardown.TeardownAsync(app, deployment, cancellationToken);
             return;
         }
 
+        await DeployAsync(db, app, deployment, request, cancellationToken);
+    }
+
+    private async Task<Deployment> GetOrCreateDeploymentAsync(
+        PreviewDeployDbContext db, App app, int prNumber, CancellationToken cancellationToken)
+    {
+        var deployment = await db.Deployments
+            .SingleOrDefaultAsync(d => d.AppId == app.Id && d.PrNumber == prNumber, cancellationToken);
+        if (deployment is not null)
+        {
+            return deployment;
+        }
+
+        deployment = new Deployment
+        {
+            AppId = app.Id,
+            PrNumber = prNumber,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        };
+        db.Deployments.Add(deployment);
+        return deployment;
+    }
+
+    private async Task DeployAsync(
+        PreviewDeployDbContext db,
+        App app,
+        Deployment deployment,
+        DeployEventRequest request,
+        CancellationToken cancellationToken)
+    {
         deployment.Status = DeploymentStatus.Building;
         deployment.Sha = request.Sha;
         deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -85,41 +105,11 @@ public sealed class DeployEventProcessor(
 
         try
         {
-            var imageTag = $"{app.Name}:pr{request.Pr}-{ShortSha(request.Sha)}";
-            var (_, port) = await containers.DeployAsync(
-                app.Name,
-                request.Pr,
-                request.Sha,
-                imageTag,
-                cloneDirectory,
-                app.Port,
-                cancellationToken);
-
-            deployment.Status = DeploymentStatus.Running;
-            deployment.Port = port;
-            deployment.Url = BuildPreviewUrl(app.Name, request.Pr);
-            deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(cancellationToken);
-
-            routingConfig.NotifyChanged();
-
-            await TryPostCommentAsync(db, app, request.Pr,
-                $"Preview ready at {deployment.Url} (sha {ShortSha(request.Sha)})");
-
-            logger.LogInformation(
-                "Preview for app {App} PR {Pr} is running at {Url} (sha {Sha})",
-                app.Name, request.Pr, deployment.Url, request.Sha);
+            await StartContainerAsync(db, app, deployment, request, cloneDirectory, cancellationToken);
         }
         catch (Exception ex)
         {
-            deployment.Status = DeploymentStatus.Failed;
-            deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(cancellationToken);
-
-            await TryPostCommentAsync(db, app, request.Pr,
-                $"Preview deployment failed: {ex.Message}");
-
-            logger.LogError(ex, "Deploying app {App} PR {Pr} (sha {Sha}) failed", app.Name, request.Pr, request.Sha);
+            await MarkFailedAsync(db, app, deployment, request, ex, cancellationToken);
         }
         finally
         {
@@ -127,25 +117,57 @@ public sealed class DeployEventProcessor(
         }
     }
 
-    private async Task TeardownAsync(
+    private async Task StartContainerAsync(
         PreviewDeployDbContext db,
         App app,
         Deployment deployment,
+        DeployEventRequest request,
+        string cloneDirectory,
         CancellationToken cancellationToken)
     {
-        await containers.StopAndRemoveAsync(
-            DeploymentNames.ContainerName(app.Name, deployment.PrNumber), cancellationToken);
+        var imageTag = $"{app.Name}:pr{request.Pr}-{ShortSha(request.Sha)}";
+        var (_, port) = await containers.DeployAsync(
+            app.Name,
+            request.Pr,
+            request.Sha,
+            imageTag,
+            cloneDirectory,
+            app.Port,
+            cancellationToken);
 
-        deployment.Status = DeploymentStatus.Stopped;
+        deployment.Status = DeploymentStatus.Running;
+        deployment.ImageTag = imageTag;
+        deployment.Port = port;
+        deployment.Url = BuildPreviewUrl(app.Name, request.Pr);
         deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
         routingConfig.NotifyChanged();
 
-        await TryPostCommentAsync(db, app, deployment.PrNumber,
-            $"Preview deployment removed for PR #{deployment.PrNumber}");
+        await TryPostCommentAsync(db, app, request.Pr,
+            $"Preview ready at {deployment.Url} (sha {ShortSha(request.Sha)})");
 
-        logger.LogInformation("Tore down preview for app {App} PR {Pr}", app.Name, deployment.PrNumber);
+        logger.LogInformation(
+            "Preview for app {App} PR {Pr} is running at {Url} (sha {Sha})",
+            app.Name, request.Pr, deployment.Url, request.Sha);
+    }
+
+    private async Task MarkFailedAsync(
+        PreviewDeployDbContext db,
+        App app,
+        Deployment deployment,
+        DeployEventRequest request,
+        Exception ex,
+        CancellationToken cancellationToken)
+    {
+        deployment.Status = DeploymentStatus.Failed;
+        deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+
+        await TryPostCommentAsync(db, app, request.Pr,
+            $"Preview deployment failed: {ex.Message}");
+
+        logger.LogError(ex, "Deploying app {App} PR {Pr} (sha {Sha}) failed", app.Name, request.Pr, request.Sha);
     }
 
     private async Task TryPostCommentAsync(

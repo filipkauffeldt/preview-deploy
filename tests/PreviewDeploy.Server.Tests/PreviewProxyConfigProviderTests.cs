@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PreviewDeploy.Server.Data;
 using PreviewDeploy.Server.Routing;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -45,13 +46,13 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
         provider.NotifyChanged();
         var config = provider.GetConfig();
 
-        var route = Assert.Single(config.Routes);
-        Assert.Equal("preview-1-pr12", route.RouteId);
-        Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(route.Match.Hosts!));
+        var route = config.Routes.ShouldHaveSingleItem();
+        route.RouteId.ShouldBe("preview-1-pr12");
+        route.Match.Hosts!.ShouldHaveSingleItem().ShouldBe("pr-12-demo.test.ts.net");
 
-        var cluster = Assert.Single(config.Clusters);
-        Assert.Equal("preview-1-pr12", cluster.ClusterId);
-        Assert.Equal("http://pr-12-demo:3000", Assert.Single(cluster.Destinations.Values).Address);
+        var cluster = config.Clusters.ShouldHaveSingleItem();
+        cluster.ClusterId.ShouldBe("preview-1-pr12");
+        cluster.Destinations!.Values.ShouldHaveSingleItem().Address.ShouldBe("http://pr-12-demo:3000");
     }
 
     [Fact]
@@ -63,8 +64,8 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
         provider.NotifyChanged();
         var config = provider.GetConfig();
 
-        Assert.Empty(config.Routes);
-        Assert.Empty(config.Clusters);
+        config.Routes.ShouldBeEmpty();
+        config.Clusters.ShouldBeEmpty();
     }
 
     [Fact]
@@ -75,17 +76,17 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
         provider.NotifyChanged();
 
         var initial = provider.GetConfig();
-        Assert.Single(initial.Routes);
+        initial.Routes.ShouldHaveSingleItem();
 
         await InsertDeploymentAsync(13, DeploymentStatus.Running, port: 4000, sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
         provider.NotifyChanged();
 
         var updated = provider.GetConfig();
-        Assert.Equal(2, updated.Routes.Count);
-        Assert.Single(updated.Routes, r => r.Match.Hosts!.Single() == "pr-13-demo.test.ts.net");
-        Assert.Single(updated.Clusters, c => c.Destinations.Values.Single().Address == "http://pr-13-demo:4000");
-        Assert.NotSame(initial, updated);
-        Assert.True(initial.ChangeToken.ActiveChangeCallbacks);
+        updated.Routes.Count.ShouldBe(2);
+        updated.Routes.Count(r => r.Match.Hosts!.Single() == "pr-13-demo.test.ts.net").ShouldBe(1);
+        updated.Clusters.Count(c => c.Destinations!.Values.Single().Address == "http://pr-13-demo:4000").ShouldBe(1);
+        initial.ShouldNotBeSameAs(updated);
+        initial.ChangeToken.ActiveChangeCallbacks.ShouldBeTrue();
     }
 
     [Fact]
@@ -94,7 +95,7 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
         await InsertDeploymentAsync(12, DeploymentStatus.Running, port: 3000, sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         var provider = GetProvider();
         provider.NotifyChanged();
-        Assert.Single(provider.GetConfig().Routes);
+        provider.GetConfig().Routes.ShouldHaveSingleItem();
 
         using (var scope = _factory.CreateDbScope())
         {
@@ -106,7 +107,7 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
 
         provider.NotifyChanged();
 
-        Assert.Empty(provider.GetConfig().Routes);
+        provider.GetConfig().Routes.ShouldBeEmpty();
     }
 
     [Fact]
@@ -114,7 +115,7 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
     {
         var provider = GetProvider();
         var initial = provider.GetConfig();
-        Assert.Empty(initial.Routes);
+        initial.Routes.ShouldBeEmpty();
 
         var signaled = false;
         initial.ChangeToken.RegisterChangeCallback(_ => signaled = true, null);
@@ -122,8 +123,8 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
         await InsertDeploymentAsync(12, DeploymentStatus.Running, port: 3000, sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         provider.NotifyChanged();
 
-        Assert.True(signaled, "YARP subscribed to the initial config's token; it must be signalled on change");
-        Assert.Single(provider.GetConfig().Routes);
+        signaled.ShouldBeTrue("YARP subscribed to the initial config's token; it must be signalled on change");
+        provider.GetConfig().Routes.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -170,7 +171,8 @@ public sealed class PreviewProxyConfigProviderTests : IAsyncLifetime
                     .GetRequiredService<PreviewProxyConfigProvider>()
                     .GetConfig();
 
-                Assert.Equal("pr-12-demo.test.ts.net", Assert.Single(config.Routes).Match.Hosts!.Single());
+                config.Routes.ShouldHaveSingleItem().Match.Hosts!.ShouldHaveSingleItem()
+                    .ShouldBe("pr-12-demo.test.ts.net");
             }
         }
         finally

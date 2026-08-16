@@ -1,4 +1,5 @@
 using System.Net;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -12,8 +13,8 @@ public sealed class HealthEndpointTests
 
         var response = await client.GetAsync("/health");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("Healthy", await response.Content.ReadAsStringAsync());
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).ShouldBe("Healthy");
     }
 
     [Fact]
@@ -28,7 +29,7 @@ public sealed class HealthEndpointTests
 
             var response = await client.GetAsync("/health");
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
         }
         finally
         {

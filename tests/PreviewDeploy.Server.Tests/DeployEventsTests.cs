@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PreviewDeploy.Server.Auth;
 using PreviewDeploy.Server.Data;
 using PreviewDeploy.Server.Endpoints;
+using Shouldly;
 
 namespace PreviewDeploy.Server.Tests;
 
@@ -42,28 +43,28 @@ public sealed class DeployEventsTests : IAsyncLifetime
     public async Task Post_WithoutToken_ReturnsUnauthorized()
     {
         var response = await PostEventAsync(CreateRequest("create"), token: null);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
     public async Task Post_WithWrongToken_ReturnsUnauthorized()
     {
         var response = await PostEventAsync(CreateRequest("create"), token: "wrong-token");
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
     public async Task Post_WithUnknownApp_ReturnsUnauthorized()
     {
         var response = await PostEventAsync(CreateRequest("create") with { App = "ghost" }, token: AppToken);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
     public async Task Post_WithInvalidAction_ReturnsBadRequest()
     {
         var response = await PostEventAsync(CreateRequest("explode"), token: AppToken);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Theory]
@@ -73,14 +74,14 @@ public sealed class DeployEventsTests : IAsyncLifetime
     public async Task Post_WithMalformedRequest_ReturnsBadRequest(string action, int pr, string sha)
     {
         var response = await PostEventAsync(new DeployEventRequest(AppName, pr, sha, action), token: AppToken);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
     public async Task Post_TeardownWithoutSha_IsAccepted()
     {
         var response = await PostEventAsync(new DeployEventRequest(AppName, 12, "", "teardown"), token: AppToken);
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
     }
 
     [Fact]
@@ -88,15 +89,15 @@ public sealed class DeployEventsTests : IAsyncLifetime
     {
         var response = await PostEventAsync(CreateRequest("create"), token: AppToken);
 
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         using var scope = _factory.CreateDbScope();
         var db = scope.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
         var @event = await db.DeployEvents.SingleAsync();
-        Assert.Equal(AppName, (await db.Apps.SingleAsync(a => a.Id == @event.AppId)).Name);
-        Assert.Equal(12, @event.PrNumber);
-        Assert.Equal(Sha, @event.Sha);
-        Assert.Equal("create", @event.Action);
+        (await db.Apps.SingleAsync(a => a.Id == @event.AppId)).Name.ShouldBe(AppName);
+        @event.PrNumber.ShouldBe(12);
+        @event.Sha.ShouldBe(Sha);
+        @event.Action.ShouldBe("create");
     }
 
     private async Task<HttpResponseMessage> PostEventAsync(DeployEventRequest request, string? token)

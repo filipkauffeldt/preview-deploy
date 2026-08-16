@@ -32,8 +32,10 @@ builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOpt
 builder.Services.Configure<GitHubOptions>(builder.Configuration.GetSection(GitHubOptions.SectionName));
 builder.Services.Configure<RoutingOptions>(builder.Configuration.GetSection(RoutingOptions.SectionName));
 builder.Services.Configure<DockerOptions>(builder.Configuration.GetSection(DockerOptions.SectionName));
+builder.Services.Configure<SweepOptions>(builder.Configuration.GetSection(SweepOptions.SectionName));
 builder.Services.AddScoped<SeedAppService>();
 builder.Services.AddScoped<AppTokenValidator>();
+builder.Services.AddScoped<DeploymentTeardownService>();
 builder.Services.AddSingleton(Channel.CreateUnbounded<DeployEventRequest>(new UnboundedChannelOptions
 {
     SingleReader = true,
@@ -41,6 +43,13 @@ builder.Services.AddSingleton(Channel.CreateUnbounded<DeployEventRequest>(new Un
 builder.Services.AddSingleton<IGitCloner, GitCloner>();
 builder.Services.AddSingleton<IContainerRuntime, DockerContainerRuntime>();
 builder.Services.AddHttpClient<IGitHubCommentClient, GitHubCommentClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("preview-deploy");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).AddHttpMessageHandler<GitHubAuthHandler>();
+builder.Services.AddHttpClient<IGitHubPullRequestClient, GitHubPullRequestClient>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com");
     client.DefaultRequestHeaders.UserAgent.ParseAdd("preview-deploy");
@@ -55,6 +64,7 @@ builder.Services.AddSingleton<IPreviewRoutingConfig>(
     sp => sp.GetRequiredService<PreviewProxyConfigProvider>());
 builder.Services.AddReverseProxy();
 builder.Services.AddHostedService<DeployEventProcessor>();
+builder.Services.AddHostedService<SweepService>();
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<PreviewDeployDbContext>(

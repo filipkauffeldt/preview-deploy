@@ -22,6 +22,7 @@ public sealed class SeedOptions
     public string Owner { get; set; } = "";
     public string Repo { get; set; } = "";
     public string Token { get; set; } = "";
+    public int TtlDays { get; set; } = 14;
 
     public bool IsConfigured =>
         Name is not "" && Owner is not "" && Repo is not "" && Token is not "";
@@ -36,6 +37,13 @@ public sealed class DockerOptions
     public string WorkDirectory { get; set; } = "/tmp/preview-deploy";
     public bool AttachNetworkOnStartup { get; set; }
     public string SelfContainerName { get; set; } = "preview-deploy-server";
+}
+
+public sealed class SweepOptions
+{
+    public const string SectionName = "Sweep";
+
+    public TimeSpan Interval { get; set; } = TimeSpan.FromMinutes(5);
 }
 
 public sealed class CertsOptions

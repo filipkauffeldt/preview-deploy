@@ -1,4 +1,5 @@
 using System.Formats.Tar;
+using System.Net;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,10 @@ public interface IContainerRuntime
         CancellationToken cancellationToken);
 
     Task StopAndRemoveAsync(string containerName, CancellationToken cancellationToken);
+
+    Task RemoveImageAsync(string imageTag, CancellationToken cancellationToken);
+
+    Task PruneImagesAsync(CancellationToken cancellationToken);
 
     Task AttachToNetworkAsync(string containerName, CancellationToken cancellationToken);
 }
@@ -93,6 +98,35 @@ public sealed class DockerContainerRuntime : IContainerRuntime
 
         _logger.LogInformation("Stopped and removed preview container {ContainerName}", containerName);
     }
+
+    public async Task RemoveImageAsync(string imageTag, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _client.Images.DeleteImageAsync(imageTag, new ImageDeleteParameters(), cancellationToken);
+            _logger.LogInformation("Removed preview image {ImageTag}", imageTag);
+        }
+        catch (DockerApiException ex) when (IsImageNotFound(ex))
+        {
+            _logger.LogInformation("Preview image {ImageTag} is already gone", imageTag);
+        }
+    }
+
+    public async Task PruneImagesAsync(CancellationToken cancellationToken)
+    {
+        var pruned = await _client.Images.PruneImagesAsync(new ImagesPruneParameters(), cancellationToken);
+        var imagesDeleted = pruned?.ImagesDeleted;
+        if (imagesDeleted is not { Count: > 0 })
+        {
+            return;
+        }
+
+        _logger.LogInformation("Pruned {Count} dangling build images", imagesDeleted.Count);
+    }
+
+    private static bool IsImageNotFound(DockerApiException exception) =>
+        exception.StatusCode == HttpStatusCode.NotFound ||
+        exception.Message.Contains("No such image", StringComparison.OrdinalIgnoreCase);
 
     public async Task AttachToNetworkAsync(string containerName, CancellationToken cancellationToken)
     {

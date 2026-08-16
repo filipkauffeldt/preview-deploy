@@ -4,7 +4,7 @@ Self-hosted preview deployments for GitHub pull requests, on your own Tailscale 
 
 Every PR gets a private URL like `pr-42-my-app.preview-server.<tailnet>.ts.net`, built from the PR's commit and torn down when the PR closes. Nothing is exposed on the public internet.
 
-Status: the happy path works end to end. Teardown, limits and queueing, a management UI, and compose mode are planned but not built yet.
+Status: the happy path works end to end, and teardown is reliable: a closed PR event tears the preview down and a periodic sweep reconciles missed events and enforces a per-app age limit. Limits and queueing, a management UI, and compose mode are planned but not built yet.
 
 ## How it works
 
@@ -13,11 +13,11 @@ Status: the happy path works end to end. Teardown, limits and queueing, a manage
 3. The server clones the app at the PR's commit, builds it with its `Dockerfile`, and runs it on a private Docker network (`preview-net`).
 4. `pr-{n}-{app}.preview-server.<tailnet>.ts.net` is routed to the container. TLS uses a Tailscale wildcard cert, renewed by the `ts-cert` sidecar.
 5. A sticky PR comment shows the preview URL, updated on every push. Build failures are reported there too.
-6. Closing or merging the PR tears the deployment down.
+6. Closing or merging the PR tears the deployment down: the workflow sends a teardown event, and a periodic sweep (every 5 minutes) catches PRs that were closed while the server was offline or the event was missed. Stale previews older than the app's TTL (default 14 days, `SEED_APP_TTL_DAYS`) are removed even for open PRs.
 
 Fork PRs are skipped: fork code never runs on the tailnet.
 
-Planned: caps and a deploy queue, a cleanup sweep with an age limit, compose-based apps, health checks, and a management UI.
+Planned: caps and a deploy queue, compose-based apps, health checks, and a management UI.
 
 ## Setup
 
