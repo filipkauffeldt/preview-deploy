@@ -102,9 +102,9 @@ public sealed class DeployFlowTests : IAsyncLifetime
         await _containers.Received(1).DeployAsync(
             AppName, 12, Sha, "demo:pr12-0123456", Arg.Any<string>(), 8080, Arg.Any<CancellationToken>());
 
-        _commentBodies.Count.ShouldBe(2);
-        _commentBodies[0].ShouldContain("Deploying preview for PR #12 (sha 0123456)");
-        _commentBodies[1].ShouldContain("Preview ready at https://pr-12-demo.test.ts.net");
+        var comments = await WaitForCommentsAsync(2);
+        comments[0].ShouldContain("Deploying preview for PR #12 (sha 0123456)");
+        comments[1].ShouldContain("Preview ready at https://pr-12-demo.test.ts.net");
     }
 
     [Fact]
@@ -135,8 +135,9 @@ public sealed class DeployFlowTests : IAsyncLifetime
         await _cloner.Received(1).CloneAsync(
             "acme", "widgets", 12, newSha, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         (await CountDeploymentsAsync()).ShouldBe(1);
-        _commentBodies.Count.ShouldBe(4);
-        _commentBodies[^1].ShouldContain("Preview ready at https://pr-12-demo.test.ts.net (sha fffffff)");
+
+        var comments = await WaitForCommentsAsync(4);
+        comments[^1].ShouldContain("Preview ready at https://pr-12-demo.test.ts.net (sha fffffff)");
     }
 
     [Fact]
@@ -159,7 +160,9 @@ public sealed class DeployFlowTests : IAsyncLifetime
         deployment.Status.ShouldBe("stopped");
         await _containers.Received(1).StopAndRemoveAsync("pr-12-demo", Arg.Any<CancellationToken>());
         await _containers.Received(1).RemoveImageAsync("demo:pr12-0123456", Arg.Any<CancellationToken>());
-        _commentBodies[^1].ShouldContain("Preview deployment removed for PR #12");
+
+        var comments = await WaitForCommentsAsync(3);
+        comments[^1].ShouldContain("Preview deployment removed for PR #12");
     }
 
     [Fact]
@@ -180,7 +183,9 @@ public sealed class DeployFlowTests : IAsyncLifetime
         deployment.ShouldNotBeNull();
         deployment.Status.ShouldBe("failed");
         deployment.Url.ShouldBeNull();
-        _commentBodies[^1].ShouldContain("Preview deployment failed: build failed");
+
+        var comments = await WaitForCommentsAsync(2);
+        comments[^1].ShouldContain("Preview deployment failed: build failed");
     }
 
     private async Task<Deployment?> GetDeployment()
@@ -196,6 +201,12 @@ public sealed class DeployFlowTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<PreviewDeployDbContext>();
         return await db.Deployments.CountAsync();
     }
+
+    private async Task<List<string>> WaitForCommentsAsync(int count) =>
+        await EventuallyAsync(
+            () => Task.FromResult(_commentBodies.ToList()),
+            comments => comments.Count == count,
+            $"{count} comments to be posted");
 
     private static async Task<T> EventuallyAsync<T>(
         Func<Task<T>> get, Func<T, bool> isDone, string what, int timeoutMs = 10_000)
