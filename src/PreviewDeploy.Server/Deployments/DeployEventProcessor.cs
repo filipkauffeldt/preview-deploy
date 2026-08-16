@@ -62,7 +62,8 @@ public sealed class DeployEventProcessor(
 
         if (request.Action == DeployEventsEndpoint.TeardownAction)
         {
-            await TeardownAsync(db, app, deployment, cancellationToken);
+            var teardown = scope.ServiceProvider.GetRequiredService<DeploymentTeardownService>();
+            await teardown.TeardownAsync(app, deployment, cancellationToken);
             return;
         }
 
@@ -96,6 +97,7 @@ public sealed class DeployEventProcessor(
                 cancellationToken);
 
             deployment.Status = DeploymentStatus.Running;
+            deployment.ImageTag = imageTag;
             deployment.Port = port;
             deployment.Url = BuildPreviewUrl(app.Name, request.Pr);
             deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -125,27 +127,6 @@ public sealed class DeployEventProcessor(
         {
             TryDeleteDirectory(cloneDirectory);
         }
-    }
-
-    private async Task TeardownAsync(
-        PreviewDeployDbContext db,
-        App app,
-        Deployment deployment,
-        CancellationToken cancellationToken)
-    {
-        await containers.StopAndRemoveAsync(
-            DeploymentNames.ContainerName(app.Name, deployment.PrNumber), cancellationToken);
-
-        deployment.Status = DeploymentStatus.Stopped;
-        deployment.UpdatedAtUtc = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
-
-        routingConfig.NotifyChanged();
-
-        await TryPostCommentAsync(db, app, deployment.PrNumber,
-            $"Preview deployment removed for PR #{deployment.PrNumber}");
-
-        logger.LogInformation("Tore down preview for app {App} PR {Pr}", app.Name, deployment.PrNumber);
     }
 
     private async Task TryPostCommentAsync(

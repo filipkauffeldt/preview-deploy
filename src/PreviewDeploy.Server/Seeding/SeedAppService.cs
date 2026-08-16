@@ -25,6 +25,7 @@ public sealed class SeedAppService(PreviewDeployDbContext db, IOptions<SeedOptio
                 Owner = seed.Owner,
                 Repo = seed.Repo,
                 TokenHash = AppToken.Hash(seed.Token),
+                TtlDays = seed.TtlDays,
                 CreatedAtUtc = DateTimeOffset.UtcNow,
             };
             db.Apps.Add(app);
@@ -34,6 +35,7 @@ public sealed class SeedAppService(PreviewDeployDbContext db, IOptions<SeedOptio
             app.Owner = seed.Owner;
             app.Repo = seed.Repo;
             app.TokenHash = AppToken.Hash(seed.Token);
+            app.TtlDays = seed.TtlDays;
         }
 
         await db.SaveChangesAsync(cancellationToken);

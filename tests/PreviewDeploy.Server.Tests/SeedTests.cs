@@ -24,6 +24,7 @@ public sealed class SeedTests
         Assert.Equal("widgets", app.Repo);
         Assert.Equal(AppToken.Hash("top-secret"), app.TokenHash);
         Assert.NotEqual("top-secret", app.TokenHash);
+        Assert.Equal(14, app.TtlDays);
     }
 
     [Fact]

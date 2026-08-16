@@ -8,6 +8,7 @@ public sealed class App
     public string Repo { get; set; } = "";
     public string TokenHash { get; set; } = "";
     public int Port { get; set; } = 8080;
+    public int TtlDays { get; set; } = 14;
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     public List<DeployEvent> Events { get; } = [];
@@ -34,6 +35,7 @@ public sealed class Deployment
     public string Sha { get; set; } = "";
     public string Status { get; set; } = "";
     public string? Url { get; set; }
+    public string? ImageTag { get; set; }
     public int Port { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }

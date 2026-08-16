@@ -7,6 +7,8 @@ public sealed class FakeContainerRuntime : IContainerRuntime
 {
     public List<(string AppName, int Pr, string Sha, string ImageTag, string ContextDirectory)> Deployed { get; } = [];
     public List<string> Stopped { get; } = [];
+    public List<string> RemovedImages { get; } = [];
+    public int PruneCalls { get; set; }
     public int Port { get; init; } = 3000;
     public bool FailDeploy { get; set; }
 
@@ -34,8 +36,38 @@ public sealed class FakeContainerRuntime : IContainerRuntime
         return Task.CompletedTask;
     }
 
+    public Task RemoveImageAsync(string imageTag, CancellationToken cancellationToken)
+    {
+        RemovedImages.Add(imageTag);
+        return Task.CompletedTask;
+    }
+
+    public Task PruneImagesAsync(CancellationToken cancellationToken)
+    {
+        PruneCalls++;
+        return Task.CompletedTask;
+    }
+
     public Task AttachToNetworkAsync(string containerName, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+}
+
+public sealed class FakeGitHubPullRequestClient : IGitHubPullRequestClient
+{
+    public Dictionary<int, bool> Closed { get; } = [];
+    public List<(string Owner, string Repo, int Pr)> Checked { get; } = [];
+    public bool FailChecks { get; set; }
+
+    public Task<bool> IsClosedAsync(string owner, string repo, int prNumber, CancellationToken cancellationToken)
+    {
+        Checked.Add((owner, repo, prNumber));
+        if (FailChecks)
+        {
+            throw new InvalidOperationException("github down");
+        }
+
+        return Task.FromResult(Closed.GetValueOrDefault(prNumber));
+    }
 }
 
 public sealed class FakeGitCloner : IGitCloner

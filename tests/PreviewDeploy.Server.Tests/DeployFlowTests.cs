@@ -64,6 +64,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
         Assert.NotNull(deployment);
         Assert.Equal(Sha, deployment.Sha);
         Assert.Equal("running", deployment.Status);
+        Assert.Equal("demo:pr12-0123456", deployment.ImageTag);
         Assert.Equal(3000, deployment.Port);
         Assert.Equal("https://pr-12-demo.test.ts.net", deployment.Url);
 
@@ -113,7 +114,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TeardownEvent_StopsContainer_AndMarksDeploymentStopped()
+    public async Task TeardownEvent_StopsContainer_RemovesImage_AndMarksDeploymentStopped()
     {
         await PostEventAsync("create");
         await EventuallyAsync(
@@ -131,6 +132,7 @@ public sealed class DeployFlowTests : IAsyncLifetime
         Assert.NotNull(deployment);
         Assert.Equal("stopped", deployment.Status);
         Assert.Equal("pr-12-demo", Assert.Single(_containers.Stopped));
+        Assert.Equal("demo:pr12-0123456", Assert.Single(_containers.RemovedImages));
         Assert.Contains("Preview deployment removed for PR #12", _comments.Upserts[^1].Body);
     }
 

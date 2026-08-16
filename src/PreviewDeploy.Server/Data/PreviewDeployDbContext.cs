@@ -20,6 +20,7 @@ public sealed class PreviewDeployDbContext(DbContextOptions<PreviewDeployDbConte
             entity.Property(a => a.Owner).HasMaxLength(200);
             entity.Property(a => a.Repo).HasMaxLength(200);
             entity.Property(a => a.TokenHash).HasMaxLength(64);
+            entity.Property(a => a.TtlDays).HasDefaultValue(14);
         });
 
         modelBuilder.Entity<DeployEvent>(entity =>
@@ -39,6 +40,7 @@ public sealed class PreviewDeployDbContext(DbContextOptions<PreviewDeployDbConte
             entity.Property(d => d.Sha).HasMaxLength(40);
             entity.Property(d => d.Status).HasMaxLength(30);
             entity.Property(d => d.Url).HasMaxLength(500);
+            entity.Property(d => d.ImageTag).HasMaxLength(500);
             entity.HasIndex(d => new { d.AppId, d.PrNumber }).IsUnique();
             entity.HasOne(d => d.App)
                 .WithMany(a => a.Deployments)
